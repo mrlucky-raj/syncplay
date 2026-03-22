@@ -1,0 +1,5 @@
+{
+  "name": "SyncPlay",
+  "description": "A real-time collaborative music player using YouTube. Host a player on one device and control it from anywhere.",
+  "requestFramePermissions": []
+}
