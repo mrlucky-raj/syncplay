@@ -1,19 +1,57 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { socket } from '../lib/socket';
 import { RoomState } from '../types';
-import { QrCode, Play, Pause, SkipForward, Volume2, Music, Eye, EyeOff } from 'lucide-react';
+import { Play, Pause, SkipForward, Music, Eye, EyeOff, Music2, Heart, Copy, Check } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { useLibrary } from '../lib/useLibrary';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 export default function Player() {
   const { roomId } = useParams<{ roomId: string }>();
+  const navigate = useNavigate();
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [volume, setVolume] = useState(100);
-  const [showVideo, setShowVideo] = useState(true);
+  const [showVideo, setShowVideo] = useState(false);
+  const [copied, setCopied] = useState(false);
+  
+  const [isIdle, setIsIdle] = useState(false);
+  const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const { toggleLike, isLiked, addToHistory } = useLibrary();
+
+  const currentUrl = `${window.location.origin}/controller/${roomId}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(currentUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const resetIdleTimer = () => {
+    setIsIdle(false);
+    if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+    if (roomState?.isPlaying && roomState?.currentSong) {
+      idleTimeoutRef.current = setTimeout(() => {
+        setIsIdle(true);
+      }, 3000);
+    }
+  };
+
+  useEffect(() => {
+    resetIdleTimer();
+    return () => {
+      if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+    };
+  }, [roomState?.isPlaying, roomState?.currentSong]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -30,6 +68,9 @@ export default function Player() {
         } else {
           playerRef.current.pauseVideo();
         }
+        if (state.volume !== undefined) {
+          playerRef.current.setVolume(state.volume);
+        }
       }
     });
 
@@ -45,6 +86,12 @@ export default function Player() {
       socket.disconnect();
     };
   }, [roomId, isReady]);
+
+  useEffect(() => {
+    if (roomState?.currentSong) {
+      addToHistory(roomState.currentSong);
+    }
+  }, [roomState?.currentSong?.id]);
 
   // MediaSession API for background playback controls
   useEffect(() => {
@@ -84,7 +131,15 @@ export default function Player() {
   const onReady = (event: YouTubeEvent) => {
     playerRef.current = event.target;
     setIsReady(true);
-    event.target.setVolume(volume);
+    
+    // We need to use a functional state update or ref to get the latest roomState here,
+    // but since onReady fires once, we can just rely on the sync-state event to set volume later.
+    // However, if we have it initially:
+    if (roomState?.volume !== undefined) {
+      event.target.setVolume(roomState.volume);
+    } else {
+      event.target.setVolume(100);
+    }
     
     if (roomState?.isPlaying) {
       event.target.playVideo();
@@ -104,49 +159,72 @@ export default function Player() {
     }
   };
 
-  const currentUrl = `${window.location.origin}/controller/${roomId}`;
-
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-white flex flex-col transition-colors">
+    <div 
+      className="min-h-[100dvh] bg-zinc-50 dark:bg-black text-zinc-900 dark:text-white flex flex-col transition-colors relative overflow-hidden"
+      onMouseMove={resetIdleTimer}
+      onClick={resetIdleTimer}
+    >
       {/* Header */}
-      <header className="p-6 flex items-center justify-between z-10 bg-white/50 dark:bg-black/50 backdrop-blur-xl border-b border-zinc-200 dark:border-white/5">
-        <div className="flex items-center gap-4">
-          <div className="bg-zinc-100 dark:bg-white/10 px-6 py-3 rounded-2xl border border-zinc-200 dark:border-white/5">
-            <span className="text-zinc-500 dark:text-white/50 text-sm uppercase tracking-widest mr-3">Room Code</span>
-            <span className="text-2xl font-mono font-bold tracking-widest text-emerald-500 dark:text-emerald-400">{roomId}</span>
+      <header className={cn(
+        "absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between gap-4 z-20 bg-white/50 dark:bg-black/50 backdrop-blur-xl border-b border-zinc-200 dark:border-white/5 pt-safe transition-transform duration-500",
+        isIdle ? "-translate-y-full" : "translate-y-0"
+      )}>
+        <div 
+          className="flex items-center gap-3 cursor-pointer group"
+          onClick={() => navigate('/')}
+        >
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
+            <Music2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="font-semibold text-lg leading-tight">SyncPlay</h1>
+            <p className="text-xs text-zinc-500 font-medium">Listen together</p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 text-zinc-500 dark:text-white/50">
-            <div className="flex flex-col items-end text-sm">
-              <span>Scan or visit</span>
-              <span className="text-zinc-900 dark:text-white font-medium">{currentUrl}</span>
-            </div>
-            <QrCode className="w-10 h-10 text-zinc-800 dark:text-white/80" />
-          </div>
-          <div className="w-px h-8 bg-zinc-200 dark:bg-white/10"></div>
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center relative p-8">
+      <main className="flex-1 flex flex-col items-center justify-center relative w-full h-[100dvh]">
         {!roomState?.currentSong ? (
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="text-center space-y-6 max-w-lg"
+            className="text-center space-y-8 max-w-lg mt-16"
           >
-            <div className="w-32 h-32 bg-zinc-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-8 border border-zinc-200 dark:border-white/10">
-              <Music className="w-12 h-12 text-zinc-400 dark:text-white/20" />
+            <div className="w-24 h-24 sm:w-32 sm:h-32 bg-zinc-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto border border-zinc-200 dark:border-white/10">
+              <Music className="w-10 h-10 sm:w-12 sm:h-12 text-zinc-400 dark:text-white/20" />
             </div>
-            <h2 className="text-3xl font-light text-zinc-800 dark:text-white/80">Waiting for music...</h2>
-            <p className="text-zinc-500 dark:text-white/40 text-lg">
-              Connect your phone using the room code <strong className="text-zinc-900 dark:text-white">{roomId}</strong> to start playing.
-            </p>
+            <div className="space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-light text-zinc-800 dark:text-white/80">Waiting for music...</h2>
+              <p className="text-zinc-500 dark:text-white/40 text-base sm:text-lg">
+                Connect your phone using the room code below to start playing.
+              </p>
+            </div>
+            
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl shadow-zinc-200/50 dark:shadow-none space-y-6">
+              <div className="space-y-2">
+                <p className="text-xs sm:text-sm uppercase tracking-widest text-zinc-500 dark:text-zinc-400 font-medium">Room Code</p>
+                <div className="text-4xl sm:text-5xl font-mono font-bold tracking-widest text-emerald-500 dark:text-emerald-400">
+                  {roomId}
+                </div>
+              </div>
+              
+              <button
+                onClick={handleCopy}
+                className="w-full py-4 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 active:scale-[0.98] text-zinc-900 dark:text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+              >
+                {copied ? <Check className="w-5 h-5 text-emerald-500" /> : <Copy className="w-5 h-5" />}
+                {copied ? 'Copied!' : 'Copy Invite Link'}
+              </button>
+            </div>
           </motion.div>
         ) : (
-          <div className="w-full max-w-6xl aspect-video rounded-3xl overflow-hidden shadow-2xl shadow-zinc-200 dark:shadow-emerald-500/10 border border-zinc-200 dark:border-white/10 relative group bg-zinc-900">
+          <div className={cn(
+            "w-full relative group bg-zinc-900 transition-all duration-500 flex items-center justify-center",
+            isIdle ? "h-[100dvh] max-w-none rounded-none border-none" : "max-w-6xl aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-zinc-200 dark:shadow-emerald-500/10 border border-zinc-200 dark:border-white/10"
+          )}>
             <YouTube
               videoId={roomState.currentSong.id}
               opts={{
@@ -179,32 +257,47 @@ export default function Player() {
             )}
             
             {/* Overlay Info (visible on hover or pause) */}
-            <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-10 transition-opacity duration-500 ${roomState.isPlaying && showVideo ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
-              <div className="flex items-end justify-between">
-                <div className="space-y-2 max-w-3xl">
-                  <h1 className="text-4xl font-bold text-white line-clamp-1">{roomState.currentSong.title}</h1>
-                  <p className="text-xl text-white/60">{roomState.currentSong.author}</p>
+            <div className={cn(
+              "absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 sm:via-black/20 to-transparent flex flex-col justify-end p-4 sm:p-10 transition-opacity duration-500",
+              isIdle ? "opacity-0 pointer-events-none" : "opacity-100"
+            )}>
+              <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 sm:gap-0 pb-16 sm:pb-0">
+                <div className="space-y-1 sm:space-y-2 max-w-3xl">
+                  <h1 className="text-xl sm:text-4xl font-bold text-white line-clamp-2 sm:line-clamp-1">{roomState.currentSong.title}</h1>
+                  <p className="text-sm sm:text-xl text-white/60">{roomState.currentSong.author}</p>
                 </div>
                 
-                <div className="flex items-center gap-6">
+                <div className="flex items-center gap-4 sm:gap-6 self-end sm:self-auto">
                   <button
-                    onClick={() => setShowVideo(!showVideo)}
-                    className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors backdrop-blur-md border border-white/10"
+                    onClick={(e) => { e.stopPropagation(); toggleLike(roomState.currentSong!); }}
+                    className={cn(
+                      "w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 active:scale-95",
+                      isLiked(roomState.currentSong.id) 
+                        ? "bg-red-500/20 text-red-500 hover:bg-red-500/30" 
+                        : "bg-black/50 text-white hover:bg-black/70"
+                    )}
+                    title="Like"
+                  >
+                    <Heart className={cn("w-4 h-4 sm:w-5 sm:h-5", isLiked(roomState.currentSong.id) && "fill-current")} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowVideo(!showVideo); }}
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors backdrop-blur-md border border-white/10 active:scale-95"
                     title={showVideo ? "Hide Video" : "Show Video"}
                   >
-                    {showVideo ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showVideo ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
                   </button>
                   <button 
-                    onClick={() => socket.emit('play-pause', roomId, !roomState.isPlaying)}
-                    className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform"
+                    onClick={(e) => { e.stopPropagation(); socket.emit('play-pause', roomId, !roomState.isPlaying); }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
                   >
-                    {roomState.isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8 ml-1" />}
+                    {roomState.isPlaying ? <Pause className="w-6 h-6 sm:w-8 sm:h-8" /> : <Play className="w-6 h-6 sm:w-8 sm:h-8 ml-1" />}
                   </button>
                   <button 
-                    onClick={() => socket.emit('next-song', roomId)}
-                    className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors backdrop-blur-md border border-white/10"
+                    onClick={(e) => { e.stopPropagation(); socket.emit('next-song', roomId); }}
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors backdrop-blur-md border border-white/10 active:scale-95"
                   >
-                    <SkipForward className="w-6 h-6" />
+                    <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
               </div>
@@ -215,15 +308,18 @@ export default function Player() {
 
       {/* Up Next Bar */}
       {roomState?.queue && roomState.queue.length > 0 && (
-        <footer className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-t border-zinc-200 dark:border-white/5 p-6 flex items-center gap-6">
-          <span className="text-zinc-500 dark:text-white/40 text-sm uppercase tracking-wider font-medium whitespace-nowrap">Up Next</span>
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+        <footer className={cn(
+          "absolute bottom-0 left-0 right-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-t border-zinc-200 dark:border-white/5 p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 pb-safe z-20 transition-transform duration-500",
+          isIdle ? "translate-y-full" : "translate-y-0"
+        )}>
+          <span className="text-zinc-500 dark:text-white/40 text-xs sm:text-sm uppercase tracking-wider font-medium whitespace-nowrap">Up Next</span>
+          <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 w-full scrollbar-hide">
             {roomState.queue.map((song, idx) => (
-              <div key={`${song.id}-${idx}`} className="flex items-center gap-3 bg-zinc-100 dark:bg-white/5 rounded-xl p-2 pr-6 min-w-[240px] max-w-[300px] border border-zinc-200 dark:border-transparent">
-                <img src={song.thumbnail} alt={song.title} className="w-12 h-12 rounded-lg object-cover" />
+              <div key={`${song.id}-${idx}`} className="flex items-center gap-3 bg-zinc-100 dark:bg-white/5 rounded-xl p-2 pr-4 sm:pr-6 min-w-[200px] sm:min-w-[240px] max-w-[260px] sm:max-w-[300px] border border-zinc-200 dark:border-transparent shrink-0">
+                <img src={song.thumbnail} alt={song.title} className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg object-cover" />
                 <div className="overflow-hidden">
-                  <p className="text-sm font-medium text-zinc-900 dark:text-white/90 truncate">{song.title}</p>
-                  <p className="text-xs text-zinc-500 dark:text-white/50 truncate">{song.author}</p>
+                  <p className="text-xs sm:text-sm font-medium text-zinc-900 dark:text-white/90 truncate">{song.title}</p>
+                  <p className="text-[10px] sm:text-xs text-zinc-500 dark:text-white/50 truncate">{song.author}</p>
                 </div>
               </div>
             ))}

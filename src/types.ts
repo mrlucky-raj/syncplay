@@ -11,4 +11,5 @@ export interface RoomState {
   currentSong: Song | null;
   isPlaying: boolean;
   currentTime: number;
+  volume: number;
 }

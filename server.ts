@@ -4,7 +4,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
 import path from 'path';
-import cors from 'cors';
 
 async function startServer() {
   const app = express();
@@ -16,7 +15,6 @@ async function startServer() {
   });
   const PORT = 3000;
 
-  app.use(cors());
   app.use(express.json());
 
   // API Routes
@@ -62,6 +60,7 @@ async function startServer() {
           currentSong: null,
           isPlaying: false,
           currentTime: 0,
+          volume: 100,
         });
       }
 
@@ -77,6 +76,14 @@ async function startServer() {
           room.currentSong = room.queue.shift();
           room.isPlaying = true;
         }
+        io.to(roomId).emit('sync-state', room);
+      }
+    });
+
+    socket.on('set-volume', (roomId: string, volume: number) => {
+      const room = rooms.get(roomId);
+      if (room) {
+        room.volume = volume;
         io.to(roomId).emit('sync-state', room);
       }
     });
