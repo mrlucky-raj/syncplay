@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { socket } from '../lib/socket';
 import { RoomState } from '../types';
-import { Play, Pause, SkipForward, Music, Eye, EyeOff, Music2, Heart, Copy, Check } from 'lucide-react';
+import { Play, Pause, SkipForward, Music, Eye, EyeOff, Music2, Heart, Copy, Check, Repeat, Repeat1 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useLibrary } from '../lib/useLibrary';
@@ -298,6 +298,18 @@ export default function Player() {
                     className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors backdrop-blur-md border border-white/10 active:scale-95"
                   >
                     <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); socket.emit('toggle-repeat', roomId); }}
+                    className={cn(
+                      "w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 active:scale-95",
+                      roomState.repeatMode === 'one' || roomState.repeatMode === 'all'
+                        ? "bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30"
+                        : "bg-black/50 text-white hover:bg-black/70"
+                    )}
+                    title="Toggle Repeat"
+                  >
+                    {roomState.repeatMode === 'one' ? <Repeat1 className="w-4 h-4 sm:w-5 sm:h-5" /> : <Repeat className="w-4 h-4 sm:w-5 sm:h-5" />}
                   </button>
                 </div>
               </div>

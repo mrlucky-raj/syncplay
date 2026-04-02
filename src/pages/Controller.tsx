@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { socket } from '../lib/socket';
 import { RoomState, Song } from '../types';
-import { Search, Play, Pause, SkipForward, Plus, ListMusic, X, Loader2, Music2, Headphones, Smartphone, Volume2, Heart, Library } from 'lucide-react';
+import { Search, Play, Pause, SkipForward, Plus, ListMusic, X, Loader2, Music2, Headphones, Smartphone, Volume2, Heart, Library, Repeat, Repeat1, Home, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useLibrary } from '../lib/useLibrary';
+import { PlaylistSelector } from '../components/PlaylistSelector';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -21,12 +22,13 @@ export default function Controller() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState<'search' | 'queue'>('search');
+  const [activeTab, setActiveTab] = useState<'home' | 'search' | 'queue'>('home');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showVolume, setShowVolume] = useState(false);
+  const [searchSource, setSearchSource] = useState<'youtube' | 'saavn'>('youtube');
   
-  const { toggleLike, isLiked, addToHistory } = useLibrary();
+  const { likedSongs, history, playlists, toggleLike, isLiked, addToHistory } = useLibrary();
 
   // Local Playback State
   const [isLocalPlaying, setIsLocalPlaying] = useState(false);
@@ -93,7 +95,7 @@ export default function Controller() {
 
     setIsSearching(true);
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&source=${searchSource}`);
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data);
@@ -132,6 +134,10 @@ export default function Controller() {
 
   const playNext = () => {
     socket.emit('next-song', roomId);
+  };
+
+  const toggleRepeat = () => {
+    socket.emit('toggle-repeat', roomId);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,7 +217,75 @@ export default function Controller() {
       <main className="flex-1 overflow-y-auto scrollbar-hide pb-[220px] relative">
         <div className="p-4 max-w-2xl mx-auto">
           <AnimatePresence mode="wait">
-            {activeTab === 'search' ? (
+            {activeTab === 'home' ? (
+              <motion.div
+                key="home"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="space-y-8 pb-32"
+              >
+                {/* Top Tracks (History) */}
+                <section>
+                  <h2 className="text-lg font-semibold mb-4">Top Tracks</h2>
+                  <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                    {history.slice(0, 10).map((song, idx) => (
+                      <div key={`history-${song.id}-${idx}`} onClick={() => playSongNow(song)} className="w-32 shrink-0 cursor-pointer group">
+                        <div className="w-32 h-32 rounded-xl overflow-hidden mb-2 relative">
+                          <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Play className="w-8 h-8 text-white fill-current" />
+                          </div>
+                        </div>
+                        <h3 className="font-medium text-sm truncate">{song.title}</h3>
+                        <p className="text-xs text-zinc-500 truncate">{song.author}</p>
+                      </div>
+                    ))}
+                    {history.length === 0 && (
+                      <p className="text-sm text-zinc-500">No recent tracks.</p>
+                    )}
+                  </div>
+                </section>
+
+                {/* Favorite Tracks */}
+                <section>
+                  <h2 className="text-lg font-semibold mb-4">Favorite Tracks</h2>
+                  <div className="space-y-2">
+                    {likedSongs.slice(0, 5).map((song) => (
+                      <div key={`liked-${song.id}`} onClick={() => playSongNow(song)} className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900/80 cursor-pointer transition-colors">
+                        <img src={song.thumbnail} alt={song.title} className="w-12 h-12 rounded-lg object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-sm truncate">{song.title}</h3>
+                          <p className="text-xs text-zinc-500 truncate">{song.author}</p>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); toggleLike(song); }} className="p-2 text-red-500">
+                          <Heart className="w-4 h-4 fill-current" />
+                        </button>
+                      </div>
+                    ))}
+                    {likedSongs.length === 0 && (
+                      <p className="text-sm text-zinc-500">No favorite tracks yet.</p>
+                    )}
+                  </div>
+                </section>
+
+                {/* Created Playlists */}
+                <section>
+                  <h2 className="text-lg font-semibold mb-4">Your Playlists</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    {playlists.map(playlist => (
+                      <div key={playlist.id} className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                        <h3 className="font-medium truncate">{playlist.name}</h3>
+                        <p className="text-xs text-zinc-500 mt-1">{playlist.songs?.length || 0} tracks</p>
+                      </div>
+                    ))}
+                    {playlists.length === 0 && (
+                      <p className="text-sm text-zinc-500 col-span-2">No playlists created.</p>
+                    )}
+                  </div>
+                </section>
+              </motion.div>
+            ) : activeTab === 'search' ? (
               <motion.div
                 key="search"
                 initial={{ opacity: 0, x: -20 }}
@@ -220,17 +294,35 @@ export default function Controller() {
                 className="space-y-6"
               >
                 <form onSubmit={handleSearch} className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search YouTube... (Press Enter)"
-                    className="w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all text-base placeholder:text-zinc-400 dark:placeholder:text-zinc-600 shadow-sm dark:shadow-none"
-                  />
-                  {isSearching && (
-                    <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500 animate-spin" />
-                  )}
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setSearchSource('youtube')}
+                      className={cn("flex-1 py-2 rounded-lg text-sm font-medium transition-colors", searchSource === 'youtube' ? "bg-emerald-500 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400")}
+                    >
+                      YouTube
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSearchSource('saavn')}
+                      className={cn("flex-1 py-2 rounded-lg text-sm font-medium transition-colors", searchSource === 'saavn' ? "bg-emerald-500 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400")}
+                    >
+                      Saavn API
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={`Search ${searchSource === 'youtube' ? 'YouTube' : 'Saavn'}... (Press Enter)`}
+                      className="w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all text-base placeholder:text-zinc-400 dark:placeholder:text-zinc-600 shadow-sm dark:shadow-none"
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500 animate-spin" />
+                    )}
+                  </div>
                 </form>
 
                 <div className="space-y-3">
@@ -266,6 +358,7 @@ export default function Controller() {
                         >
                           <Heart className={cn("w-5 h-5", isLiked(song.id) && "fill-current")} />
                         </button>
+                        <PlaylistSelector song={song} />
                         <button
                           onClick={(e) => addToQueue(song, e)}
                           className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors active:scale-95"
@@ -303,12 +396,15 @@ export default function Controller() {
                           <h3 className="font-medium text-zinc-900 dark:text-zinc-200 truncate text-sm">{song.title}</h3>
                           <p className="text-xs text-zinc-500 truncate">{song.author}</p>
                         </div>
-                        <button
-                          onClick={() => removeFromQueue(idx)}
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-400/10 transition-colors active:scale-95"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex gap-1">
+                          <PlaylistSelector song={song} />
+                          <button
+                            onClick={() => removeFromQueue(idx)}
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-400/10 transition-colors active:scale-95"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -420,6 +516,18 @@ export default function Controller() {
                   >
                     <SkipForward className="w-5 h-5" />
                   </button>
+                  <button
+                    onClick={toggleRepeat}
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center transition-colors active:scale-95",
+                      roomState.repeatMode === 'one' || roomState.repeatMode === 'all'
+                        ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                        : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    )}
+                    title="Toggle Repeat"
+                  >
+                    {roomState.repeatMode === 'one' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
             </div>
@@ -427,6 +535,16 @@ export default function Controller() {
 
           {/* Bottom Nav */}
           <div className="flex items-center justify-around px-2 pb-2">
+            <button
+              onClick={() => setActiveTab('home')}
+              className={cn(
+                "flex flex-col items-center gap-1 p-2 min-w-[64px] rounded-xl transition-all active:scale-95",
+                activeTab === 'home' ? "text-emerald-500 dark:text-emerald-400" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              )}
+            >
+              <Home className="w-6 h-6" />
+              <span className="text-[10px] font-medium">Home</span>
+            </button>
             <button
               onClick={() => setActiveTab('search')}
               className={cn(

@@ -4,6 +4,15 @@ export interface Song {
   thumbnail: string;
   duration: string;
   author: string;
+  source?: 'youtube' | 'saavn';
+  downloadUrl?: string;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  songs: Song[];
+  createdAt: number;
 }
 
 export interface RoomState {
@@ -12,4 +21,5 @@ export interface RoomState {
   isPlaying: boolean;
   currentTime: number;
   volume: number;
+  repeatMode: 'off' | 'one' | 'all';
 }
